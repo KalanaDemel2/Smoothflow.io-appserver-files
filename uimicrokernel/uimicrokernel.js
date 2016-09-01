@@ -216,7 +216,7 @@
     });
 
 
-    mkm.factory('$helpers', function($rootScope) {
+    mkm.factory('$helpers', function($rootScope,$http) {
 
         function AsyncTask(action, success, fail) {
 
@@ -253,6 +253,22 @@
             newTask.start(inputs);
         }
 
+        function getSysinfo(cb){
+            $http.get("/include/sysinfo.php").
+            success(function(data, status, headers, config) {
+                cb(data);
+            }).
+            error(function(data, status, headers, config) {
+                cb({});
+            });
+        }
+
+        function getMainDomain(cb){
+            getSysinfo(function(si){
+                cb(si.mainDomain ? si.mainDomain : "");
+            });
+        }
+
         return {
             task: function(actionFunc, successFunc, failFunc) {
                 task(actionFunc, successFunc, failFunc);
@@ -284,7 +300,9 @@
             getTimeStamp: function() {
                 var now = new Date();
                 return ("" + now.getYear() + now.getMonth() + now.getDate() + now.getHours() + now.getMinutes() + now.getSeconds() + now.getMilliseconds());
-            }
+            },
+            getSysinfo: getSysinfo,
+            getMainDomain:getMainDomain
         }
 
     });
@@ -896,6 +914,10 @@
             $rootScope.$emit("fws_chat_message", data);
         });
 
+        $fws.onRecieveCommand("chat_send_notification", function(e, data) {
+            $rootScope.$emit("fws_chat_message", data);
+        });
+        
         return {
             onMessage: function(func) {
                 $rootScope.$on("fws_chat_message", func);
@@ -1034,6 +1056,10 @@
 
         $fws.onRecieveCommand("onDockerMap", function(e, data) {
             $rootScope.$emit("fws_agent_cluster", data);
+        })
+
+        $fws.onRecieveCommand("onGlobalConfigSaved", function(e, data) {
+            $rootScope.$emit("fws_agent_configsaved_global", data);
         })
 
         function handleResponse(data) {
@@ -1296,8 +1322,11 @@
             $rootScope.$emit("fws_agent_response_tenantSave", resData);
         }
 
-        function command(command, data) {
-
+        function command(id, cmd, data) {
+            $fws.forward(id, "agentCommand", {
+                command: cmd,
+                data: data
+            });
         }
 
         return {
@@ -1306,6 +1335,9 @@
             },
             onDisplayInfo: function(func) {
                 $rootScope.$on("fws_agent_displayinfo", func);
+            },
+            onGlobalConfigSaved: function(func) {
+                $rootScope.$on("fws_agent_configsaved_global", func);
             },
             onAgentLogInfo: function(func) {
                 $rootScope.$on("fws_agent_log", func);
@@ -1342,11 +1374,12 @@
             saveGlobalConfig: function(id, section, data) {
                 saveGlobalConfig(id, section, data);
             },
-            agentCommand: function(command, data) {
-                command(command, data);
+            agentCommand: function(id, cmd, data) {
+                command(id, cmd, data);
             }
         };
     });
+
 
     mkm.factory('$webrtc', function($fws, $auth, $rootScope, $helpers) {
         //idle,establishing, outgoing,incoming,oncall
@@ -1606,7 +1639,6 @@
             /*
             localPeerConnection = new RTCPeerConnection(servers);
             localPeerConnection.addStream(localStream);
-
             localPeerConnection.onicecandidate = gotLocalIceCandidate;
             localPeerConnection.onaddstream = gotRemoteStream;
             */
@@ -1805,8 +1837,9 @@
     mkm.factory('$presence', function($fws, $rootScope, $auth) {
 
         function setOnline() {
-            if ($fws.isOnline()) $rootScope.$on("fws_pres_state", func);
-            else $fws.connect();
+            //if ($fws.isOnline()) $rootScope.$on("fws_pres_state", func);
+            //else $fws.connect();
+            if (!$fws.isOnline()) $fws.connect();
         }
 
         $fws.onRegistered(function() {
@@ -1937,11 +1970,21 @@
             var onComplete;
             var onError;
 
-            function execute(opParams, contParams, timestamp) {
-                $http.get($v6urls.processDispatcher, {
-                    headers: {
-                        "securityToken": $auth.getSecurityToken()
-                    }
+            function execute(refId, refType, operationCode, timeStamp,timeStampR, parameters, scheduleParameters) {
+                var sendObj;
+                if (typeof(refId) === "object") sendObj = refId;
+                else sendObj = {
+                       RefId:refId,
+                       RefType:refType,
+                       OperationCode:operationCode,
+                       TimeStamp:timeStamp,
+                       TimeStampReadable:timeStampR,
+                       Parameters: parameters,
+                       ScheduleParameters : scheduleParameters
+                }
+
+                $http.get($v6urls.processDispatcher + "/scheduler/add",sendObj, {
+                    headers: {"securityToken": $auth.getSecurityToken()}
                 }).
                 success(function(data, status, headers, config) {
                     if (onDispatched)
@@ -2003,12 +2046,12 @@
             }
 
             return {
-                dispatch: function(opParams, contParams) {
-                    execute(opParams, contParams);
+                dispatch: function(refId, refType, operationCode, timeStamp, timeStampR,  parameters) {
+                    execute(refId, refType, operationCode, timeStamp,timeStampR, parameters, scheduleParameters);
                     return this;
                 },
-                schedule: function(timestamp, opParams, contParams) {
-                    execute(opParams, contParams, timestamp);
+                schedule: function(refId, refType, operationCode, timeStamp,timeStampR, parameters, scheduleParameters) {
+                    execute(refId, refType, operationCode, timeStamp,timeStampR, parameters, scheduleParameters);
                     return this;
                 },
                 invoke: function(processcode, appcode, inarguments) {
@@ -2359,6 +2402,27 @@
             getIcon: function(app, callback) {
                 if (app.iconUrl) callback(app.iconUrl);
                 else callback("");
+            },
+            setArguments: function(appCode, params){
+                if (!window.uiMicrokernel)
+                    window.uiMicrokernel = {appParams:{}};
+                window.uiMicrokernel.appParams[appCode] = params;
+            },
+            getArguments: function(appCode){
+                var pIFrame = window.parent;
+                while (!pIFrame.parent){ 
+                    pIFrame = pIFrame.parent;                
+                }
+
+                var aParams = undefined;
+                if (pIFrame.uiMicrokernel)
+                if (pIFrame.uiMicrokernel.appParams)
+                if (pIFrame.uiMicrokernel.appParams[appCode]){
+                    var aParams = pIFrame.uiMicrokernel.appParams[appCode];
+                    delete pIFrame.uiMicrokernel.appParams[appCode];
+                }
+
+                return aParams;
             }
         }
     });
@@ -2371,10 +2435,11 @@
         return {
             auth: p + "//" + host + "/auth",
             objectStore: p + "//" + host + "/data",
-            fws: p + "//" + host + ":4000",
-            processDispatcher: p + "//" + host + ":5000",
-            processManager : "http://130.211.243.130:8093",
-		    smoothflowIP : "http://130.211.243.130",
+            
+            fws: location.protocol + "//ceb.duoworld.com:4000",
+            processDispatcher: p + "//duo-world.appspot.com",
+            processManager : location.protocol + "//130.211.243.130:8093",
+            smoothflowIP : location.protocol + "//130.211.243.130",
             mediaLib: p + "//" + host + "/apis/media",
         };
     });

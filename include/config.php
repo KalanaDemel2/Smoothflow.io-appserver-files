@@ -3,6 +3,7 @@ $mainDomain="smoothflow.io";
 $authURI="http://auth.smoothflow.io:3048/";
 $objURI="http://obj.smoothflow.io:3000/";
 $fullhost=strtolower($_SERVER['HTTP_HOST']);
+$protacall="http";
 define("ROOT_PATH", $_SERVER['DOCUMENT_ROOT']);
 define("MEDIA_PATH", "/var/media");
 define("APPICON_PATH", "/var/www/html/devportal/appicons");
