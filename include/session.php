@@ -140,14 +140,14 @@ function getURI(){
 		    			else
 		    			{
 		    				// header("Location: payapi/shell.php");
-		    				header("Location: dwboarding/");
+		    				header("Location: app/");
 		    				exit();
 		    			}
 		    		}
 		    		else
 		    		{
 		    				// header("Location: payapi/shell.php");
-		    				header("Location: dwboarding/");
+		    				header("Location: app/");
 		    				exit();
 		    		}
 
@@ -167,7 +167,7 @@ function getURI(){
 		    			}
 		    			else
 		    			{
-		    				header("Location: dwboarding/");
+		    				header("Location: app/");
 		    				// header("Location: payapi/shell.php");
 		    			}
 		    		}
@@ -177,7 +177,7 @@ function getURI(){
 		    	//include("t.php");
 		    }
 		    // header("Location: payapi/shell.php");
-		    header("Location: dwboarding/");
+		    header("Location: app/");
 }
 
 
